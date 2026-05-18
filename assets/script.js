@@ -254,27 +254,45 @@
         : aggregateProbe(svc.id);
 
       var status = agg.status;
+
+      // Browser-side probes that fail are almost certainly WAF
+      // challenges / network quirks on the visitor's connection, not
+      // real outages. Visually treat them as "no data" instead of
+      // "Down" — neutral bullet, no alarmist red — and add an
+      // explanatory hint so the user can investigate THEIR network.
+      // (The authoritative API services keep full red/amber/green.)
+      if (svc.source === "probe" && status === "major_outage") {
+        status = "unknown";
+      }
+
       var statusWord = {
-        operational: "Operational",
+        operational: "Reachable",
         degraded: "Degraded",
         major_outage: "Down",
-        unknown: "—",
+        unknown: svc.source === "probe" ? "Blocked" : "No data",
       }[status];
+      if (svc.source === "api") {
+        statusWord = {
+          operational: "Operational",
+          degraded: "Degraded",
+          major_outage: "Down",
+          unknown: "No data",
+        }[status];
+      }
 
       var statsBits = [];
       if (svc.source === "api") {
         statsBits.push(agg.checks + " check" + (agg.checks === 1 ? "" : "s"));
         if (agg.uptime_pct != null) statsBits.push(agg.uptime_pct + "% · 1h");
         if (agg.avg_latency != null) statsBits.push(agg.avg_latency + "ms");
-      } else {
-        if (agg.avg_latency != null) statsBits.push(agg.avg_latency + "ms");
+      } else if (status === "unknown") {
+        statsBits.push("CORS or network blocked");
+      } else if (agg.avg_latency != null) {
+        statsBits.push(agg.avg_latency + "ms");
       }
 
-      // Browser-side probes get a small "your view" label so visitors
-      // understand a red bullet here means THEIR network can't reach
-      // the surface — not that we're down for everyone. Prevents the
-      // status page from looking apocalyptic when a single WAF rule
-      // bounces one user's IP.
+      // "your view" tag stays on browser-side probes — even when green —
+      // so the visitor understands what they're looking at.
       var viewTag = svc.source === "probe"
         ? '<span class="svc-tag" title="Reachability from your browser, not authoritative">your view</span>'
         : "";
