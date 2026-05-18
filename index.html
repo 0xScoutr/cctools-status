@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CCTools API Status</title>
+  <meta name="description" content="Live status of the CCTools public API: endpoint uptime, latency, and incidents." />
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://status.cctools.network" />
+  <meta property="og:title" content="CCTools API Status" />
+  <meta property="og:description" content="Live status of the CCTools public API." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CCTools API Status" />
+  <meta name="twitter:description" content="Live status of the CCTools public API." />
+  <meta name="theme-color" content="#0c0e14" />
+  <meta name="color-scheme" content="dark" />
+
+  <link rel="canonical" href="https://status.cctools.network" />
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+
+  <!-- Google Fonts: matches cctools type stack -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="page-header">
+      <div class="eyebrow">
+        <span class="dot-lime" aria-hidden="true"></span>
+        Live status
+      </div>
+      <h1>CCTools API Status</h1>
+      <p class="lede">
+        Real-time uptime and latency for
+        <a href="https://api.cctools.network" target="_blank" rel="noopener">api.cctools.network</a>.
+        Checked every 2 minutes server-side. This page refreshes every 30 seconds.
+      </p>
+    </header>
+
+    <!-- Overall status banner -->
+    <section
+      id="overall"
+      class="overall-card overall-loading"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="overall-icon" id="overall-icon" aria-hidden="true">…</div>
+      <div class="overall-text">
+        <div class="overall-title" id="overall-title">Loading status…</div>
+        <div class="overall-sub" id="overall-sub">Fetching latest health snapshot.</div>
+        <div class="overall-stamp" id="overall-stamp"></div>
+      </div>
+    </section>
+
+    <!-- Stale/Offline warning (hidden by default) -->
+    <div id="offline-banner" class="offline-banner" hidden>
+      <strong>Cannot reach the status API.</strong>
+      <span id="offline-detail">Showing last known data.</span>
+    </div>
+
+    <!-- Active incidents -->
+    <section id="active-incidents" class="incidents" hidden>
+      <h2>Active incidents</h2>
+      <div id="active-incidents-list" class="incidents-list"></div>
+    </section>
+
+    <!-- Endpoints -->
+    <section class="endpoints" aria-labelledby="endpoints-h2">
+      <h2 id="endpoints-h2">Endpoints</h2>
+      <div id="endpoints-card" class="endpoints-card">
+        <div class="endpoints-empty">Loading endpoints…</div>
+      </div>
+    </section>
+
+    <!-- Resolved incidents (last 30d) -->
+    <section id="resolved-incidents" class="incidents" hidden>
+      <h2>Recent updates (last 30 days)</h2>
+      <div id="resolved-incidents-list" class="incidents-list"></div>
+    </section>
+
+    <footer class="page-footer">
+      <a href="https://api.cctools.network/api/v1/openapi.json" target="_blank" rel="noopener">OpenAPI spec ↗</a>
+      <span class="dot-sep" aria-hidden="true">·</span>
+      <a href="https://docs.cctools.network/api" target="_blank" rel="noopener">API docs ↗</a>
+      <span class="dot-sep" aria-hidden="true">·</span>
+      <a href="https://cctools.network/profile/api" target="_blank" rel="noopener">Get an API key</a>
+      <span class="dot-sep" aria-hidden="true">·</span>
+      <a href="https://cctools.network/contact" target="_blank" rel="noopener">Report an issue</a>
+    </footer>
+  </main>
+
+  <script src="/assets/script.js" defer></script>
+</body>
+</html>
