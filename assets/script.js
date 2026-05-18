@@ -23,9 +23,14 @@
   // The services we surface — one row per logical service. Each maps to
   // either a backend `group` (from /v1/public/status data) OR a browser
   // probe ID. Order is editorial: most-trafficked surface first.
+  // The Users service is intentionally OMITTED until profiles.slug is
+  // backfilled in the cctools2 DB. The /api/v1/public/users/{slug}
+  // endpoints exist but always 404 because slug is null on every row
+  // (pre-existing bug, separate fix needed). Adding a check that always
+  // fails would mislead visitors into thinking we're broken when in
+  // fact the surface just hasn't shipped yet.
   var SERVICES = [
     { id: "ecosystem", source: "api", group: "ecosystem", title: "Ecosystem", desc: "Projects, trending, categories, rankings" },
-    { id: "users", source: "api", group: "users", title: "Users", desc: "Profiles, badges, contributions, activity" },
     { id: "earn", source: "api", group: "earn", title: "Earn", desc: "Opportunities and campaigns" },
     { id: "leaderboard", source: "api", group: "leaderboard", title: "Leaderboard", desc: "XP rankings" },
     { id: "meta", source: "api", group: "meta", title: "API Documentation", desc: "OpenAPI 3.0 specification" },
