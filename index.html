@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CCTools API Status</title>
-  <meta name="description" content="Live status of the CCTools public API: endpoint uptime, latency, and incidents." />
+  <meta name="description" content="Live status of the CCTools public API: services, endpoint uptime, latency, and incidents." />
 
   <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website" />
@@ -14,8 +14,8 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CCTools API Status" />
   <meta name="twitter:description" content="Live status of the CCTools public API." />
-  <meta name="theme-color" content="#0c0e14" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#fafbfc" />
+  <meta name="color-scheme" content="light" />
 
   <link rel="canonical" href="https://status.cctools.network" />
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
@@ -39,9 +39,9 @@
       </div>
       <h1>CCTools API Status</h1>
       <p class="lede">
-        Real-time uptime and latency for
-        <a href="https://api.cctools.network" target="_blank" rel="noopener">api.cctools.network</a>.
-        Checked every 2 minutes server-side. This page refreshes every 30 seconds.
+        Real-time health of every public surface that powers
+        <a href="https://cctools.network" target="_blank" rel="noopener">cctools.network</a>:
+        APIs, web app, docs, and the underlying check stack. Refreshed every 30 seconds.
       </p>
     </header>
 
@@ -66,23 +66,74 @@
       <span id="offline-detail">Showing last known data.</span>
     </div>
 
+    <!-- Stats row -->
+    <section class="stats-row" aria-label="Monitoring summary">
+      <div class="stat-card">
+        <div class="stat-label">Services</div>
+        <div class="stat-value" id="stat-services">—</div>
+        <div class="stat-sub">API + infrastructure</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Endpoints</div>
+        <div class="stat-value" id="stat-endpoints">—</div>
+        <div class="stat-sub">Monitored every 2 min</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Uptime · 1h</div>
+        <div class="stat-value" id="stat-uptime">—</div>
+        <div class="stat-sub">Across all endpoints</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg latency</div>
+        <div class="stat-value" id="stat-latency">—</div>
+        <div class="stat-sub">Last hour</div>
+      </div>
+    </section>
+
+    <!-- API services -->
+    <section class="section" aria-labelledby="svc-h2">
+      <div class="section-head">
+        <h2 id="svc-h2">API services</h2>
+        <span class="section-sub" id="svc-count">—</span>
+      </div>
+      <div id="services-row" class="cards-row">
+        <div class="endpoints-empty">Loading services…</div>
+      </div>
+    </section>
+
+    <!-- Infrastructure (browser-side liveness probes) -->
+    <section class="section" aria-labelledby="infra-h2">
+      <div class="section-head">
+        <h2 id="infra-h2">Infrastructure</h2>
+        <span class="section-sub">Browser-side liveness</span>
+      </div>
+      <div id="infra-row" class="cards-row"></div>
+    </section>
+
     <!-- Active incidents -->
-    <section id="active-incidents" class="incidents" hidden>
-      <h2>Active incidents</h2>
+    <section id="active-incidents" class="section" hidden aria-labelledby="active-h2">
+      <div class="section-head">
+        <h2 id="active-h2">Active incidents</h2>
+      </div>
       <div id="active-incidents-list" class="incidents-list"></div>
     </section>
 
-    <!-- Endpoints -->
-    <section class="endpoints" aria-labelledby="endpoints-h2">
-      <h2 id="endpoints-h2">Endpoints</h2>
+    <!-- Endpoint detail -->
+    <section class="section" aria-labelledby="ep-h2">
+      <div class="section-head">
+        <h2 id="ep-h2">Endpoint detail</h2>
+        <span class="section-sub">Each check the backend runs</span>
+      </div>
       <div id="endpoints-card" class="endpoints-card">
         <div class="endpoints-empty">Loading endpoints…</div>
       </div>
     </section>
 
     <!-- Resolved incidents (last 30d) -->
-    <section id="resolved-incidents" class="incidents" hidden>
-      <h2>Recent updates (last 30 days)</h2>
+    <section id="resolved-incidents" class="section" hidden aria-labelledby="resolved-h2">
+      <div class="section-head">
+        <h2 id="resolved-h2">Recent updates (last 30 days)</h2>
+      </div>
       <div id="resolved-incidents-list" class="incidents-list"></div>
     </section>
 

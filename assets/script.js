@@ -1,11 +1,15 @@
 /**
  * CCTools Status — client.
  *
- * Polls api.cctools.network/api/v1/public/status every 30 seconds,
- * renders the snapshot, falls back to localStorage on fetch failure.
+ * Two data sources, both kept in sync on the UI:
+ *  1. api.cctools.network/api/v1/public/status  (server-side health checker)
+ *  2. Browser-side liveness probes for the public surfaces (cctools.network,
+ *     api.cctools.network root, docs.cctools.network) — gives a "what the
+ *     visitor sees" signal that complements the backend's loopback probes.
  *
- * Zero deps. Vanilla DOM. Survives a backend outage by surfacing
- * the last cached state with a clear "API unreachable" banner.
+ * Polls every 30s. Falls back to localStorage on fetch failure. Surfaces
+ * a clear "API unreachable" banner so the status page is most useful
+ * exactly when the backend is least reachable.
  */
 
 (function () {
@@ -14,9 +18,17 @@
   var API_URL = "https://api.cctools.network/api/v1/public/status";
   var POLL_MS = 30 * 1000;
   var CACHE_KEY = "cctools.status.last";
-  var CACHE_MAX_AGE_MS = 10 * 60 * 1000; // surface "stale" warning after 10min
 
-  var GROUP_ORDER = ["meta", "ecosystem", "users", "earn", "leaderboard", "auth"];
+  // Service groups we surface as top-level cards. Order is intentional:
+  // most-used surfaces first.
+  var SERVICE_DEFS = [
+    { group: "ecosystem", title: "Ecosystem", desc: "Projects, trending, categories, rankings" },
+    { group: "users", title: "Users", desc: "Profiles, badges, contributions, activity" },
+    { group: "earn", title: "Earn", desc: "Opportunities + campaigns" },
+    { group: "leaderboard", title: "Leaderboard", desc: "XP rankings" },
+    { group: "meta", title: "Documentation", desc: "OpenAPI spec + tooling" },
+  ];
+
   var GROUP_LABELS = {
     meta: "Meta",
     ecosystem: "Ecosystem",
@@ -25,6 +37,15 @@
     leaderboard: "Leaderboard",
     auth: "Auth",
   };
+
+  // Browser-side liveness checks. Image-probe trick: if the browser can
+  // load /favicon.ico from the target host, we treat it as up. CORS-free,
+  // ~50ms in steady state, instantly returns error event on DNS fail.
+  var INFRA_PROBES = [
+    { id: "web", title: "Public site", host: "cctools.network", url: "https://cctools.network/favicon.ico" },
+    { id: "api", title: "API gateway", host: "api.cctools.network", url: "https://api.cctools.network/api/v1/openapi.json", method: "fetch" },
+    { id: "docs", title: "Documentation", host: "docs.cctools.network", url: "https://docs.cctools.network/favicon.ico" },
+  ];
 
   // ─── DOM refs ────────────────────────────────────────────────────────────
   var $overall = document.getElementById("overall");
@@ -35,6 +56,15 @@
 
   var $offlineBanner = document.getElementById("offline-banner");
   var $offlineDetail = document.getElementById("offline-detail");
+
+  var $statServices = document.getElementById("stat-services");
+  var $statEndpoints = document.getElementById("stat-endpoints");
+  var $statUptime = document.getElementById("stat-uptime");
+  var $statLatency = document.getElementById("stat-latency");
+
+  var $servicesRow = document.getElementById("services-row");
+  var $svcCount = document.getElementById("svc-count");
+  var $infraRow = document.getElementById("infra-row");
 
   var $activeSection = document.getElementById("active-incidents");
   var $activeList = document.getElementById("active-incidents-list");
@@ -63,8 +93,7 @@
       .replace(/'/g, "&#039;");
   }
 
-  // Log scale for sparkline bar height so 50ms / 500ms / 5000ms are
-  // visually distinct. Linear was useless past ~1s.
+  // Log scale so 50ms / 500ms / 5000ms are visually distinct.
   function barHeight(latencyMs) {
     var v = Math.max(1, latencyMs || 1);
     var h = 4 + Math.round(Math.log10(v) * 5);
@@ -95,18 +124,190 @@
     }
   }
 
-  // ─── Rendering ───────────────────────────────────────────────────────────
-  function renderOverall(data, fromCache, cacheAgeMs) {
-    var overall = data.overall || "operational";
+  // ─── Service aggregation ─────────────────────────────────────────────────
+  function aggregateService(group, endpoints) {
+    var inGroup = endpoints.filter(function (e) { return e.group === group; });
+    if (!inGroup.length) {
+      return { status: "unknown", checks: 0, ok_count: 0, uptime_pct: null, avg_latency: null };
+    }
+    var sampled = inGroup.filter(function (e) { return e.last_ok !== null; });
+    var downCount = sampled.filter(function (e) { return e.last_ok === false; }).length;
 
-    // Clear previous mode class
+    var status = "unknown";
+    if (sampled.length === 0) status = "unknown";
+    else if (downCount === 0) status = "operational";
+    else if (downCount >= Math.ceil(sampled.length / 2)) status = "major_outage";
+    else status = "degraded";
+
+    var uptimeAvg = null;
+    var uptimeSamples = sampled.filter(function (e) { return e.uptime_pct_1h != null; });
+    if (uptimeSamples.length) {
+      var sum = uptimeSamples.reduce(function (a, e) { return a + e.uptime_pct_1h; }, 0);
+      uptimeAvg = Math.round((sum / uptimeSamples.length) * 10) / 10;
+    }
+
+    var latencyAvg = null;
+    var latSamples = sampled.filter(function (e) { return e.avg_latency_1h != null; });
+    if (latSamples.length) {
+      latencyAvg = Math.round(
+        latSamples.reduce(function (a, e) { return a + e.avg_latency_1h; }, 0) / latSamples.length
+      );
+    }
+
+    return {
+      status: status,
+      checks: inGroup.length,
+      ok_count: sampled.length - downCount,
+      uptime_pct: uptimeAvg,
+      avg_latency: latencyAvg,
+    };
+  }
+
+  function renderServices(endpoints) {
+    var html = SERVICE_DEFS.map(function (svc) {
+      var agg = aggregateService(svc.group, endpoints);
+      var statusLabel = {
+        operational: "Operational",
+        degraded: "Degraded",
+        major_outage: "Outage",
+        unknown: "No data",
+      }[agg.status];
+
+      var metaLine = "<strong>" + agg.checks + "</strong> check" + (agg.checks === 1 ? "" : "s");
+      if (agg.uptime_pct != null) metaLine += " · " + agg.uptime_pct + "% · 1h";
+      if (agg.avg_latency != null) metaLine += " · " + agg.avg_latency + "ms";
+
+      return (
+        '<div class="service-card svc-' + agg.status + '">' +
+        '  <div class="service-head">' +
+        '    <span class="service-title">' + escapeHtml(svc.title) + "</span>" +
+        '    <span class="service-status s-' + agg.status + '">' + statusLabel + "</span>" +
+        "  </div>" +
+        '  <div class="service-meta">' + metaLine + "</div>" +
+        "</div>"
+      );
+    }).join("");
+
+    $servicesRow.innerHTML = html;
+    $svcCount.textContent = SERVICE_DEFS.length + " services";
+  }
+
+  // ─── Stats row ───────────────────────────────────────────────────────────
+  function renderStats(data, infraStates) {
+    var endpoints = data.endpoints || [];
+    var sampled = endpoints.filter(function (e) { return e.last_ok !== null; });
+
+    // Combined service count = API service groups (5) + infrastructure (3)
+    var serviceTotal = SERVICE_DEFS.length + INFRA_PROBES.length;
+    $statServices.textContent = String(serviceTotal);
+
+    $statEndpoints.textContent = String(endpoints.length);
+
+    var uptimeSamples = sampled.filter(function (e) { return e.uptime_pct_1h != null; });
+    if (uptimeSamples.length) {
+      var sum = uptimeSamples.reduce(function (a, e) { return a + e.uptime_pct_1h; }, 0);
+      var avg = (sum / uptimeSamples.length).toFixed(1);
+      $statUptime.textContent = avg + "%";
+    } else {
+      $statUptime.textContent = "—";
+    }
+
+    var latSamples = sampled.filter(function (e) { return e.avg_latency_1h != null; });
+    if (latSamples.length) {
+      var lat = Math.round(
+        latSamples.reduce(function (a, e) { return a + e.avg_latency_1h; }, 0) / latSamples.length
+      );
+      $statLatency.textContent = lat + "ms";
+    } else {
+      $statLatency.textContent = "—";
+    }
+  }
+
+  // ─── Infrastructure (browser-side probes) ────────────────────────────────
+  var infraState = {}; // id → { ok: boolean|null, latency_ms, last_check }
+
+  function probeImage(url) {
+    return new Promise(function (resolve) {
+      var start = Date.now();
+      var img = new Image();
+      var done = false;
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        resolve({ ok: ok, latency_ms: Date.now() - start });
+      }
+      img.onload = function () { finish(true); };
+      img.onerror = function () { finish(false); };
+      // cache buster avoids stale browser cache hiding outages
+      img.src = url + "?_=" + Date.now();
+      setTimeout(function () { finish(false); }, 8000);
+    });
+  }
+
+  function probeFetch(url) {
+    return new Promise(function (resolve) {
+      var start = Date.now();
+      var ctrl = new AbortController();
+      var t = setTimeout(function () { ctrl.abort(); }, 8000);
+      fetch(url + "?_=" + Date.now(), { method: "GET", cache: "no-store", signal: ctrl.signal })
+        .then(function (res) {
+          clearTimeout(t);
+          resolve({ ok: res.ok, latency_ms: Date.now() - start });
+        })
+        .catch(function () {
+          clearTimeout(t);
+          resolve({ ok: false, latency_ms: Date.now() - start });
+        });
+    });
+  }
+
+  async function runInfraProbes() {
+    var results = await Promise.all(
+      INFRA_PROBES.map(function (p) {
+        return (p.method === "fetch" ? probeFetch(p.url) : probeImage(p.url)).then(function (r) {
+          return { id: p.id, title: p.title, host: p.host, ok: r.ok, latency_ms: r.latency_ms };
+        });
+      }),
+    );
+    results.forEach(function (r) {
+      infraState[r.id] = { ok: r.ok, latency_ms: r.latency_ms, last_check: Date.now() };
+    });
+    renderInfra();
+  }
+
+  function renderInfra() {
+    var html = INFRA_PROBES.map(function (p) {
+      var s = infraState[p.id] || { ok: null, latency_ms: null, last_check: null };
+      var status = s.ok === null ? "unknown" : s.ok ? "operational" : "major_outage";
+      var statusLabel = {
+        operational: "Reachable",
+        degraded: "Slow",
+        major_outage: "Unreachable",
+        unknown: "Checking…",
+      }[status];
+
+      var metaLine = "<strong>" + escapeHtml(p.host) + "</strong>";
+      if (s.latency_ms != null) metaLine += " · " + s.latency_ms + "ms";
+
+      return (
+        '<div class="service-card svc-' + status + '">' +
+        '  <div class="service-head">' +
+        '    <span class="service-title">' + escapeHtml(p.title) + "</span>" +
+        '    <span class="service-status s-' + status + '">' + statusLabel + "</span>" +
+        "  </div>" +
+        '  <div class="service-meta">' + metaLine + "</div>" +
+        "</div>"
+      );
+    }).join("");
+    $infraRow.innerHTML = html;
+  }
+
+  // ─── Overall + incidents + endpoints (unchanged from before) ────────────
+  function renderOverall(data, fromCache) {
+    var overall = data.overall || "operational";
     $overall.className = "overall-card overall-" + overall;
 
-    var iconMap = {
-      operational: "✓",
-      degraded: "!",
-      major_outage: "×",
-    };
+    var iconMap = { operational: "✓", degraded: "!", major_outage: "×" };
     var titleMap = {
       operational: "All systems operational",
       degraded: "Degraded performance",
@@ -128,19 +329,15 @@
 
     var checkedAt = data.checked_at || new Date().toISOString();
     $overallStamp.textContent =
-      "Last checked " +
-      relTime(checkedAt) +
-      (fromCache ? " · cached" : "");
+      "Last checked " + relTime(checkedAt) + (fromCache ? " · cached" : "");
   }
 
   function renderIncidents(incidents) {
-    var active = [];
-    var resolved = [];
+    var active = [], resolved = [];
     (incidents || []).forEach(function (i) {
       if (i.status === "resolved") resolved.push(i);
       else active.push(i);
     });
-
     renderIncidentList($activeSection, $activeList, active);
     renderIncidentList($resolvedSection, $resolvedList, resolved);
   }
@@ -152,93 +349,56 @@
       return;
     }
     section.hidden = false;
-
-    var html = items
-      .map(function (i) {
-        var sevColor =
-          i.severity === "critical" || i.severity === "major"
-            ? "red"
-            : i.severity === "maintenance"
-            ? "blue"
-            : "amber";
-        var statusColor =
-          i.status === "resolved"
-            ? "lime"
-            : i.status === "monitoring"
-            ? "blue"
-            : "amber";
-
-        var bodyHtml = i.body
-          ? '<p class="incident-body">' + escapeHtml(i.body) + "</p>"
-          : "";
-        var resolvedHtml = i.resolved_at
-          ? ' <span class="dot-sep">·</span> Resolved ' +
-            escapeHtml(relTime(i.resolved_at))
-          : "";
-        var endpointsHtml =
-          i.affected_endpoints && i.affected_endpoints.length
-            ? ' <span class="dot-sep">·</span> ' +
-              i.affected_endpoints.length +
-              " endpoint" +
-              (i.affected_endpoints.length > 1 ? "s" : "")
-            : "";
-
-        return (
-          '<div class="incident-card">' +
-          '  <div class="incident-head">' +
-          '    <h3 class="incident-title">' +
-          escapeHtml(i.title || "Untitled") +
-          "</h3>" +
-          '    <span class="badge ' +
-          sevColor +
-          '">' +
-          escapeHtml(i.severity) +
-          "</span>" +
-          '    <span class="badge ' +
-          statusColor +
-          '">' +
-          escapeHtml(i.status) +
-          "</span>" +
-          "  </div>" +
-          bodyHtml +
-          '  <div class="incident-meta">Started ' +
-          escapeHtml(relTime(i.created_at)) +
-          resolvedHtml +
-          endpointsHtml +
-          "  </div>" +
-          "</div>"
-        );
-      })
-      .join("");
-
+    var html = items.map(function (i) {
+      var sevColor =
+        i.severity === "critical" || i.severity === "major" ? "red" :
+        i.severity === "maintenance" ? "blue" : "amber";
+      var statusColor =
+        i.status === "resolved" ? "green" :
+        i.status === "monitoring" ? "blue" : "amber";
+      var bodyHtml = i.body ? '<p class="incident-body">' + escapeHtml(i.body) + "</p>" : "";
+      var resolvedHtml = i.resolved_at
+        ? ' <span class="dot-sep">·</span> Resolved ' + escapeHtml(relTime(i.resolved_at))
+        : "";
+      var endpointsHtml = i.affected_endpoints && i.affected_endpoints.length
+        ? ' <span class="dot-sep">·</span> ' + i.affected_endpoints.length + " endpoint" +
+          (i.affected_endpoints.length > 1 ? "s" : "")
+        : "";
+      return (
+        '<div class="incident-card">' +
+        '  <div class="incident-head">' +
+        '    <h3 class="incident-title">' + escapeHtml(i.title || "Untitled") + "</h3>" +
+        '    <span class="badge ' + sevColor + '">' + escapeHtml(i.severity) + "</span>" +
+        '    <span class="badge ' + statusColor + '">' + escapeHtml(i.status) + "</span>" +
+        "  </div>" +
+        bodyHtml +
+        '  <div class="incident-meta">Started ' + escapeHtml(relTime(i.created_at)) +
+        resolvedHtml + endpointsHtml + "</div>" +
+        "</div>"
+      );
+    }).join("");
     list.innerHTML = html;
   }
 
   function renderEndpoints(endpoints) {
     if (!endpoints || !endpoints.length) {
-      $endpointsCard.innerHTML =
-        '<div class="endpoints-empty">No endpoints reporting yet.</div>';
+      $endpointsCard.innerHTML = '<div class="endpoints-empty">No endpoints reporting yet.</div>';
       return;
     }
-
     var byGroup = {};
     endpoints.forEach(function (e) {
       var g = e.group || "meta";
       if (!byGroup[g]) byGroup[g] = [];
       byGroup[g].push(e);
     });
-
-    var html = GROUP_ORDER.filter(function (g) {
+    var groupOrder = ["ecosystem", "users", "earn", "leaderboard", "meta", "auth"];
+    var html = groupOrder.filter(function (g) {
       return byGroup[g] && byGroup[g].length;
-    })
-      .map(function (g) {
-        var head =
-          '<div class="group-heading">' + escapeHtml(GROUP_LABELS[g]) + "</div>";
-        var rows = byGroup[g].map(renderEndpointRow).join("");
-        return head + rows;
-      })
-      .join("");
-
+    }).map(function (g) {
+      var head = '<div class="group-heading">' + escapeHtml(GROUP_LABELS[g] || g) + "</div>";
+      var rows = byGroup[g].map(renderEndpointRow).join("");
+      return head + rows;
+    }).join("");
     $endpointsCard.innerHTML = html;
   }
 
@@ -246,33 +406,20 @@
     var ok = ep.last_ok;
     var dotCls = ok === true ? "dot-ok" : ok === false ? "dot-down" : "dot-unknown";
     var statusLabel =
-      ok == null
-        ? "No data"
-        : ok
-        ? "Operational"
-        : "Down (HTTP " + (ep.last_status_code || "?") + ")";
+      ok == null ? "No data" :
+      ok ? "Operational" : "Down (HTTP " + (ep.last_status_code || "?") + ")";
 
-    // Sparkline (last 30 recent points)
     var recent = (ep.recent || []).slice(-30);
-    var bars = recent
-      .map(function (r) {
-        return (
-          '<span class="spark-bar' +
-          (r.ok ? "" : " bar-down") +
-          '" style="height:' +
-          barHeight(r.latency_ms) +
-          'px" title="' +
-          escapeHtml(
-            r.status_code + " · " + r.latency_ms + "ms · " + relTime(r.ts)
-          ) +
-          '"></span>'
-        );
-      })
-      .join("");
+    var bars = recent.map(function (r) {
+      return (
+        '<span class="spark-bar' + (r.ok ? "" : " bar-down") +
+        '" style="height:' + barHeight(r.latency_ms) +
+        'px" title="' + escapeHtml(r.status_code + " · " + r.latency_ms + "ms · " + relTime(r.ts)) + '"></span>'
+      );
+    }).join("");
 
     var statsLine = [];
-    if (ep.uptime_pct_1h != null)
-      statsLine.push(ep.uptime_pct_1h + "% · 1h");
+    if (ep.uptime_pct_1h != null) statsLine.push(ep.uptime_pct_1h + "% · 1h");
     if (ep.avg_latency_1h != null) statsLine.push(ep.avg_latency_1h + "ms");
     var statsSub = statsLine.join(" · ") || "—";
 
@@ -292,8 +439,10 @@
     );
   }
 
-  function render(data, fromCache, cacheAgeMs) {
-    renderOverall(data, fromCache, cacheAgeMs);
+  function render(data, fromCache) {
+    renderOverall(data, fromCache);
+    renderStats(data, infraState);
+    renderServices(data.endpoints || []);
     renderIncidents(data.incidents || []);
     renderEndpoints(data.endpoints || []);
   }
@@ -302,7 +451,6 @@
     $offlineBanner.hidden = false;
     if (detail) $offlineDetail.textContent = detail;
   }
-
   function hideOffline() {
     $offlineBanner.hidden = true;
   }
@@ -320,26 +468,18 @@
         signal: ctrl.signal,
       });
       clearTimeout(timeout);
-
-      if (!res.ok) {
-        throw new Error("HTTP " + res.status);
-      }
+      if (!res.ok) throw new Error("HTTP " + res.status);
       var data = await res.json();
       saveCache(data);
       hideOffline();
-      render(data, false, 0);
+      render(data, false);
     } catch (err) {
       clearTimeout(timeout);
-      // Try to render last known cache.
       var cached = loadCache();
       if (cached && cached.data) {
-        var age = Date.now() - cached.timestamp;
-        showOffline(
-          "Showing last known data from " + relTime(new Date(cached.timestamp).toISOString())
-        );
-        render(cached.data, true, age);
+        showOffline("Showing last known data from " + relTime(new Date(cached.timestamp).toISOString()));
+        render(cached.data, true);
       } else {
-        // No cache + no network. Render a hard-down state.
         var down = {
           overall: "major_outage",
           checked_at: new Date().toISOString(),
@@ -348,17 +488,21 @@
           active_incident_count: 0,
         };
         showOffline("Cannot reach the status API and no cache available.");
-        render(down, false, 0);
+        render(down, false);
       }
     }
   }
 
   // Boot + poll
   load();
+  runInfraProbes();
   setInterval(load, POLL_MS);
+  setInterval(runInfraProbes, POLL_MS);
 
-  // Refresh when the tab comes back from background
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "visible") load();
+    if (document.visibilityState === "visible") {
+      load();
+      runInfraProbes();
+    }
   });
 })();

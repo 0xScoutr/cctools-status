@@ -8,7 +8,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.cctools.network; frame-ancestors 'none'; base-uri 'self'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cctools.network https://docs.cctools.network; connect-src 'self' https://api.cctools.network; frame-ancestors 'none'; base-uri 'self'; object-src 'none'
 
 # Long cache for static assets — fonts, CSS, JS. They're versioned by
 # Cloudflare Pages deploy hash so changes invalidate cleanly.
