@@ -3,148 +3,89 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CCTools API Status</title>
-  <meta name="description" content="Live status of the CCTools public API: services, endpoint uptime, latency, and incidents." />
+  <title>CCTools Status</title>
+  <meta name="description" content="Live status of the CCTools public API and the surfaces around it." />
 
   <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://status.cctools.network" />
-  <meta property="og:title" content="CCTools API Status" />
+  <meta property="og:title" content="CCTools Status" />
   <meta property="og:description" content="Live status of the CCTools public API." />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="CCTools API Status" />
+  <meta name="twitter:title" content="CCTools Status" />
   <meta name="twitter:description" content="Live status of the CCTools public API." />
-  <meta name="theme-color" content="#fafbfc" />
+  <meta name="theme-color" content="#fcfcf9" />
   <meta name="color-scheme" content="light" />
 
   <link rel="canonical" href="https://status.cctools.network" />
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 
-  <!-- Google Fonts: matches cctools type stack -->
+  <!-- Fonts: Fraunces (display, variable serif), DM Sans (body), JetBrains Mono (data) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..900,0..100,0..1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   />
 
   <link rel="stylesheet" href="/assets/styles.css" />
 </head>
 <body>
-  <main class="container">
-    <header class="page-header">
-      <div class="eyebrow">
-        <span class="dot-lime" aria-hidden="true"></span>
-        Live status
-      </div>
-      <h1>CCTools API Status</h1>
-      <p class="lede">
-        Real-time health of every public surface that powers
-        <a href="https://cctools.network" target="_blank" rel="noopener">cctools.network</a>:
-        APIs, web app, docs, and the underlying check stack. Refreshed every 30 seconds.
-      </p>
+  <main class="page">
+    <header class="masthead">
+      <a class="brand" href="https://cctools.network" rel="noopener">
+        <span class="brand-dot" aria-hidden="true"></span>
+        CCTools
+      </a>
+      <span class="masthead-sep" aria-hidden="true">/</span>
+      <span class="masthead-section">Status</span>
+      <span class="masthead-date" id="masthead-date"></span>
     </header>
 
-    <!-- Overall status banner -->
-    <section
-      id="overall"
-      class="overall-card overall-loading"
-      role="status"
-      aria-live="polite"
-    >
-      <div class="overall-icon" id="overall-icon" aria-hidden="true">…</div>
-      <div class="overall-text">
-        <div class="overall-title" id="overall-title">Loading status…</div>
-        <div class="overall-sub" id="overall-sub">Fetching latest health snapshot.</div>
-        <div class="overall-stamp" id="overall-stamp"></div>
+    <!-- Hero status statement — the page's defining surface -->
+    <section class="hero" id="hero">
+      <div class="hero-eyebrow" id="hero-eyebrow">
+        <span class="dot" id="hero-dot" aria-hidden="true"></span>
+        <span id="hero-eyebrow-text">Checking</span>
       </div>
+      <h1 class="hero-title" id="hero-title">Loading status.</h1>
+      <p class="hero-meta" id="hero-meta">Connecting to api.cctools.network…</p>
     </section>
 
-    <!-- Stale/Offline warning (hidden by default) -->
-    <div id="offline-banner" class="offline-banner" hidden>
-      <strong>Cannot reach the status API.</strong>
-      <span id="offline-detail">Showing last known data.</span>
-    </div>
-
-    <!-- Stats row -->
-    <section class="stats-row" aria-label="Monitoring summary">
-      <div class="stat-card">
-        <div class="stat-label">Services</div>
-        <div class="stat-value" id="stat-services">—</div>
-        <div class="stat-sub">API + infrastructure</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Endpoints</div>
-        <div class="stat-value" id="stat-endpoints">—</div>
-        <div class="stat-sub">Monitored every 2 min</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Uptime · 1h</div>
-        <div class="stat-value" id="stat-uptime">—</div>
-        <div class="stat-sub">Across all endpoints</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Avg latency</div>
-        <div class="stat-value" id="stat-latency">—</div>
-        <div class="stat-sub">Last hour</div>
-      </div>
-    </section>
-
-    <!-- API services -->
-    <section class="section" aria-labelledby="svc-h2">
+    <!-- Single unified list — every monitored thing in one place -->
+    <section class="services" aria-labelledby="services-h2">
       <div class="section-head">
-        <h2 id="svc-h2">API services</h2>
-        <span class="section-sub" id="svc-count">—</span>
+        <h2 id="services-h2">Services</h2>
+        <span class="section-sub" id="services-sub">—</span>
       </div>
-      <div id="services-row" class="cards-row">
-        <div class="endpoints-empty">Loading services…</div>
-      </div>
+
+      <ul class="service-list" id="service-list">
+        <li class="service-row svc-row-loading">
+          <div class="svc-name">Loading checks…</div>
+        </li>
+      </ul>
     </section>
 
-    <!-- Infrastructure (browser-side liveness probes) -->
-    <section class="section" aria-labelledby="infra-h2">
+    <!-- Incidents (active + recent, conditional) -->
+    <section class="incidents" id="incidents-section" hidden aria-labelledby="incidents-h2">
       <div class="section-head">
-        <h2 id="infra-h2">Infrastructure</h2>
-        <span class="section-sub">Browser-side liveness</span>
+        <h2 id="incidents-h2">Recent updates</h2>
+        <span class="section-sub">Last 30 days</span>
       </div>
-      <div id="infra-row" class="cards-row"></div>
+      <ul class="incidents-list" id="incidents-list"></ul>
     </section>
 
-    <!-- Active incidents -->
-    <section id="active-incidents" class="section" hidden aria-labelledby="active-h2">
-      <div class="section-head">
-        <h2 id="active-h2">Active incidents</h2>
+    <footer class="footer">
+      <div class="footer-links">
+        <a href="https://api.cctools.network/api/v1/openapi.json" target="_blank" rel="noopener">OpenAPI spec</a>
+        <a href="https://docs.cctools.network/api" target="_blank" rel="noopener">API documentation</a>
+        <a href="https://cctools.network/profile/api" target="_blank" rel="noopener">Get an API key</a>
+        <a href="https://cctools.network/contact" target="_blank" rel="noopener">Report an issue</a>
       </div>
-      <div id="active-incidents-list" class="incidents-list"></div>
-    </section>
-
-    <!-- Endpoint detail -->
-    <section class="section" aria-labelledby="ep-h2">
-      <div class="section-head">
-        <h2 id="ep-h2">Endpoint detail</h2>
-        <span class="section-sub">Each check the backend runs</span>
+      <div class="footer-note">
+        <span>Built by</span> <a href="https://cctools.network" rel="noopener">CCTools</a> <span>·</span>
+        <span>Source on</span> <a href="https://github.com/0xScoutr/cctools-status" target="_blank" rel="noopener">GitHub</a>
       </div>
-      <div id="endpoints-card" class="endpoints-card">
-        <div class="endpoints-empty">Loading endpoints…</div>
-      </div>
-    </section>
-
-    <!-- Resolved incidents (last 30d) -->
-    <section id="resolved-incidents" class="section" hidden aria-labelledby="resolved-h2">
-      <div class="section-head">
-        <h2 id="resolved-h2">Recent updates (last 30 days)</h2>
-      </div>
-      <div id="resolved-incidents-list" class="incidents-list"></div>
-    </section>
-
-    <footer class="page-footer">
-      <a href="https://api.cctools.network/api/v1/openapi.json" target="_blank" rel="noopener">OpenAPI spec ↗</a>
-      <span class="dot-sep" aria-hidden="true">·</span>
-      <a href="https://docs.cctools.network/api" target="_blank" rel="noopener">API docs ↗</a>
-      <span class="dot-sep" aria-hidden="true">·</span>
-      <a href="https://cctools.network/profile/api" target="_blank" rel="noopener">Get an API key</a>
-      <span class="dot-sep" aria-hidden="true">·</span>
-      <a href="https://cctools.network/contact" target="_blank" rel="noopener">Report an issue</a>
     </footer>
   </main>
 
