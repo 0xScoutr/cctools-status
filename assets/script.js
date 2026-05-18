@@ -58,7 +58,11 @@
   // ─── Helpers ─────────────────────────────────────────────────────────────
   function relTime(iso) {
     if (!iso) return "—";
-    var d = (Date.now() - new Date(iso).getTime()) / 1000;
+    // Clamp at 0 — a server timestamp slightly ahead of the client clock
+    // (CDN edge return ~200ms after server set checked_at) would render
+    // as "-1 seconds ago" otherwise.
+    var d = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (d < 5) return "just now";
     if (d < 60) return Math.floor(d) + " seconds ago";
     if (d < 3600) {
       var m = Math.floor(d / 60);
@@ -156,25 +160,32 @@
   }
 
   // ─── Overall computation ─────────────────────────────────────────────────
+  // Browser-side probes (cctools.network, docs.cctools.network) are
+  // intentionally EXCLUDED from this calculation: they reflect the
+  // visitor's view, which is wrong when the visitor's IP is rate-limited
+  // / WAF-challenged / on a flaky network. A status page driven by one
+  // visitor's perspective is worse than no status page. Probes still
+  // render as informational rows but never move the overall hero.
   function computeOverall() {
     if (!lastData) return "unknown";
-    var statuses = SERVICES.map(function (svc) {
-      if (svc.source === "api") {
-        return aggregateApiService(svc.group, lastData.endpoints || []).status;
-      }
-      return aggregateProbe(svc.id).status;
-    });
-    var hasMajor = statuses.indexOf("major_outage") !== -1;
-    var hasDegraded = statuses.indexOf("degraded") !== -1;
-    var allUnknown = statuses.every(function (s) { return s === "unknown"; });
 
-    if (allUnknown) return "unknown";
+    // Detect the "checker just booted, no ticks yet" state: every API
+    // endpoint has last_ok === null. Without this we'd show "operational"
+    // based on no evidence, which is misleading.
+    var endpoints = lastData.endpoints || [];
+    var anySampled = endpoints.some(function (e) { return e.last_ok !== null; });
+    if (!anySampled) return "initializing";
 
-    // Cross-check with backend's own opinion if present.
+    var apiStatuses = SERVICES
+      .filter(function (svc) { return svc.source === "api"; })
+      .map(function (svc) { return aggregateApiService(svc.group, endpoints).status; });
+
+    var hasMajor = apiStatuses.indexOf("major_outage") !== -1;
+    var hasDegraded = apiStatuses.indexOf("degraded") !== -1;
+
     var backendSays = lastData.overall;
-    if (backendSays === "major_outage") return "major_outage";
-    if (hasMajor) return "major_outage";
-    if (hasDegraded || backendSays === "degraded") return "degraded";
+    if (backendSays === "major_outage" || hasMajor) return "major_outage";
+    if (backendSays === "degraded" || hasDegraded) return "degraded";
     return "operational";
   }
 
@@ -183,6 +194,7 @@
     operational: "All systems operational.",
     degraded: "Some surfaces are degraded.",
     major_outage: "We're investigating an outage.",
+    initializing: "Bringing checks online.",
     unknown: "Checking status…",
   };
 
@@ -190,6 +202,7 @@
     operational: "Operational",
     degraded: "Degraded",
     major_outage: "Major outage",
+    initializing: "Initializing",
     unknown: "Checking",
   };
 
@@ -257,11 +270,20 @@
         if (agg.avg_latency != null) statsBits.push(agg.avg_latency + "ms");
       }
 
+      // Browser-side probes get a small "your view" label so visitors
+      // understand a red bullet here means THEIR network can't reach
+      // the surface — not that we're down for everyone. Prevents the
+      // status page from looking apocalyptic when a single WAF rule
+      // bounces one user's IP.
+      var viewTag = svc.source === "probe"
+        ? '<span class="svc-tag" title="Reachability from your browser, not authoritative">your view</span>'
+        : "";
+
       return (
-        '<li class="service-row">' +
+        '<li class="service-row svc-' + svc.source + '">' +
         '  <span class="svc-bullet s-' + status + '" aria-hidden="true"></span>' +
         '  <div class="svc-info">' +
-        '    <div class="svc-name">' + escapeHtml(svc.title) + "</div>" +
+        '    <div class="svc-name">' + escapeHtml(svc.title) + viewTag + "</div>" +
         '    <div class="svc-desc">' + escapeHtml(svc.desc) + "</div>" +
         "  </div>" +
         '  <div class="svc-stats">' +
